@@ -2,83 +2,86 @@
 
 namespace ColdHot;
 
+use ColdHot\GameModel;
+use ColdHot\GameView;
+
 class ConsoleApplication
 {
-    private GameView $view;
+    private $model;
+    private $view;
 
-    public function __construct()
+    public function __construct(GameModel $model, GameView $view)
     {
-        $this->view = new GameView();
+        $this->model = $model;
+        $this->view = $view;
     }
 
-    public function run(array $argv): void
+    public function runNewGame(): void
     {
-        $options = $this->parseCommandLineArgs($argv);
+        $this->view->showWelcome();
 
-        if ($options['help']) {
-            $this->view->showHelp();
-            return;
-        }
+        $playerName = $this->view->getPlayerName();
+        $secretNumber = $this->model->generateSecretNumber();
+        $gameId = $this->model->startNewGame($playerName, $secretNumber);
 
-        if ($options['list']) {
-            $this->view->showListMessage();
-            return;
-        }
+        $this->view->showGameStarted();
 
-        if ($options['replay'] !== null) {
-            $this->view->showReplayMessage($options['replay']);
-            return;
-        }
+        $attempts = 0;
+        $maxAttempts = 10;
 
-        // Запуск новой игры
-        $model = new GameModel();
-        $controller = new GameController($model, $this->view);
-        $controller->startNewGame();
-    }
+        while ($attempts < $maxAttempts) {
+            $attempts++;
+            $guess = $this->view->getPlayerGuess($attempts, $maxAttempts);
 
-    private function parseCommandLineArgs(array $argv): array
-    {
-        $options = [
-            'new' => false,
-            'list' => false,
-            'replay' => null,
-            'help' => false
-        ];
+            if ($guess === 'quit') {
+                $this->model->finishGame($gameId, false);
+                $this->view->showGameQuit();
+                return;
+            }
 
-        // Убираем имя скрипта из аргументов
-        array_shift($argv);
+            if (!preg_match('/^\d{3}$/', $guess) || count(array_unique(str_split($guess))) !== 3) {
+                $this->view->showInvalidInput();
+                $attempts--;
+                continue;
+            }
 
-        foreach ($argv as $arg) {
-            switch ($arg) {
-                case '--new':
-                case '-n':
-                    $options['new'] = true;
-                    break;
-                case '--list':
-                case '-l':
-                    $options['list'] = true;
-                    break;
-                case '--help':
-                case '-h':
-                    $options['help'] = true;
-                    break;
-                default:
-                    if (preg_match('/^--replay=(\d+)$/', $arg, $matches)) {
-                        $options['replay'] = (int)$matches[1];
-                    } elseif (preg_match('/^-r=(\d+)$/', $arg, $matches)) {
-                        $options['replay'] = (int)$matches[1];
-                    } elseif (preg_match('/^-r(\d+)$/', $arg, $matches)) {
-                        $options['replay'] = (int)$matches[1];
-                    }
-                    break;
+            $result = $this->model->checkGuess($secretNumber, $guess);
+            $this->model->saveAttempt($gameId, $attempts, $guess, $result['hints']);
+
+            $this->view->showHints($result['hints']);
+
+            if ($result['is_correct']) {
+                $this->model->finishGame($gameId, true);
+                $this->view->showWinMessage($attempts);
+                return;
             }
         }
 
-        // Если никакие параметры не указаны, используем режим новой игры
-        if (!$options['new'] && !$options['list'] && $options['replay'] === null && !$options['help']) {
-            $options['new'] = true;
+        $this->model->finishGame($gameId, false);
+        $this->view->showLoseMessage($secretNumber);
+    }
+
+    public function showGamesList(): void
+    {
+        $games = $this->model->getAllGames();
+        $this->view->showGamesList($games);
+    }
+
+    public function replayGame(int $gameId): void
+    {
+        $gameData = $this->model->getGameById($gameId);
+
+        if (!$gameData) {
+            $this->view->showGameNotFound();
+            return;
         }
 
-        return $options;
+        $attempts = $this->model->getGameAttempts($gameId);
+        $this->view->showReplay($gameData, $attempts);
+    }
+
+    public function showHelp(): void
+    {
+        $this->view->showHelp();
     }
 }

@@ -2,119 +2,125 @@
 
 namespace ColdHot;
 
+use ColdHot\Database;
+
 class GameModel
 {
-    private string $secretNumber;
-    private array $attempts = [];
-    private int $currentAttempt = 0;
-    private bool $isWon = false;
+    private $db;
 
-    public function __construct()
+    public function __construct(Database $database)
     {
-        $this->generateSecretNumber();
+        $this->db = $database;
     }
 
-    private function generateSecretNumber(): void
+    public function generateSecretNumber(): string
     {
         $digits = range(0, 9);
-
-        do {
-            shuffle($digits);
-            $number = implode('', array_slice($digits, 0, 3));
-        } while ($number[0] === '0');
-
-        $this->secretNumber = $number;
+        shuffle($digits);
+        return implode('', array_slice($digits, 0, 3));
     }
 
-    public function makeGuess(string $guess): array
+    public function startNewGame(string $playerName, string $secretNumber): int
     {
-        if (!$this->isValidGuess($guess)) {
-            throw new \InvalidArgumentException('Неверный формат числа. Используйте 3 уникальные цифры, первая не 0.');
-        }
-
-        $this->currentAttempt++;
-        $hints = $this->calculateHints($guess);
-
-        $attempt = [
-            'number' => $this->currentAttempt,
-            'guess' => $guess,
-            'hints' => $hints
-        ];
-
-        $this->attempts[] = $attempt;
-
-        if ($guess === $this->secretNumber) {
-            $this->isWon = true;
-        }
-
-        return $hints;
+        $stmt = $this->db->getPdo()->prepare("
+            INSERT INTO games (player_name, secret_number) 
+            VALUES (?, ?)
+        ");
+        $stmt->execute([$playerName, $secretNumber]);
+        return $this->db->getPdo()->lastInsertId();
     }
 
-    private function isValidGuess(string $guess): bool
-    {
-        // Проверяем, что строка состоит из 3 цифр
-        if (!preg_match('/^\d{3}$/', $guess)) {
-            return false;
-        }
-
-        // Проверяем, что первая цифра не 0
-        if ($guess[0] === '0') {
-            return false;
-        }
-
-        // Проверяем, что все цифры уникальны
-        $digits = str_split($guess);
-        return count($digits) === count(array_unique($digits));
-    }
-
-    private function calculateHints(string $guess): array
+    public function checkGuess(string $secret, string $guess): array
     {
         $hints = [];
-        $secretDigits = str_split($this->secretNumber);
-        $guessDigits = str_split($guess);
+        $isCorrect = ($secret === $guess);
 
-        // Проверяем точные совпадения (горячо)
+        // Check for exact matches (hot)
         for ($i = 0; $i < 3; $i++) {
-            if ($secretDigits[$i] === $guessDigits[$i]) {
+            if ($secret[$i] === $guess[$i]) {
                 $hints[] = 'Горячо';
             }
         }
 
-        // Проверяем цифры на других позициях (тепло)
+        // Check for correct digits in wrong positions (warm)
         for ($i = 0; $i < 3; $i++) {
-            if ($secretDigits[$i] !== $guessDigits[$i] && in_array($guessDigits[$i], $secretDigits, true)) {
+            if ($secret[$i] !== $guess[$i] && strpos($secret, $guess[$i]) !== false) {
                 $hints[] = 'Тепло';
             }
         }
 
-        // Если нет совпадений - холодно
+        // Add cold if no matches
         if (empty($hints)) {
             $hints[] = 'Холодно';
         }
 
-        // Сортируем подсказки в алфавитном порядке
+        // Sort hints alphabetically
         sort($hints);
 
-        return $hints;
+        return [
+            'hints' => $hints,
+            'is_correct' => $isCorrect
+        ];
     }
 
-    public function isGameWon(): bool
+    public function saveAttempt(int $gameId, int $attemptNumber, string $guess, array $hints): void
     {
-        return $this->isWon;
+        $stmt = $this->db->getPdo()->prepare("
+            INSERT INTO attempts (game_id, attempt_number, guess, hints) 
+            VALUES (?, ?, ?, ?)
+        ");
+        $stmt->execute([$gameId, $attemptNumber, $guess, json_encode($hints, JSON_UNESCAPED_UNICODE)]);
     }
 
-    public function getSecretNumber(): string
+    public function finishGame(int $gameId, bool $isWon): void
     {
-        return $this->secretNumber;
+        $stmt = $this->db->getPdo()->prepare("
+            UPDATE games 
+            SET is_completed = 1, is_won = ? 
+            WHERE id = ?
+        ");
+        $stmt->execute([$isWon ? 1 : 0, $gameId]);
     }
 
-    public function getAttempts(): array
+    public function getAllGames(): array
     {
-        return $this->attempts;
+        $stmt = $this->db->getPdo()->query("
+            SELECT id, player_name, secret_number, is_won, created_at 
+            FROM games 
+            ORDER BY created_at DESC
+        ");
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    public function getCurrentAttemptNumber(): int
+    public function getGameById(int $gameId): ?array
     {
-        return $this->currentAttempt;
+        $stmt = $this->db->getPdo()->prepare("
+            SELECT id, player_name, secret_number, is_won, created_at 
+            FROM games 
+            WHERE id = ?
+        ");
+        $stmt->execute([$gameId]);
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $result ?: null;
+    }
+
+    public function getGameAttempts(int $gameId): array
+    {
+        $stmt = $this->db->getPdo()->prepare("
+            SELECT attempt_number, guess, hints 
+            FROM attempts 
+            WHERE game_id = ? 
+            ORDER BY attempt_number
+        ");
+        $stmt->execute([$gameId]);
+
+        $attempts = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Decode JSON hints
+        foreach ($attempts as &$attempt) {
+            $attempt['hints'] = json_decode($attempt['hints'], true);
+        }
+
+        return $attempts;
     }
 }

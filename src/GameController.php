@@ -2,51 +2,47 @@
 
 namespace ColdHot;
 
+use ColdHot\ConsoleApplication;
+use ColdHot\Database;
+use ColdHot\GameModel;
+use ColdHot\GameView;
+
 class GameController
 {
-    private GameModel $model;
-    private GameView $view;
-
-    public function __construct(GameModel $model, GameView $view)
+    public function run(array $argv): void
     {
-        $this->model = $model;
-        $this->view = $view;
-    }
+        $database = new Database(__DIR__ . '"/../bin/cold-hot.db');
+        $model = new GameModel($database);
+        $view = new GameView();
+        $app = new ConsoleApplication($model, $view);
 
-    public function startNewGame(): void
-    {
-        $this->view->showWelcomeMessage();
-        $this->view->showDatabaseMessage();
+        $option = $argv[1] ?? '-n';
 
-        while (!$this->model->isGameWon()) {
-            try {
-                $guess = $this->view->promptForGuess();
-
-                if ($guess === 'quit' || $guess === 'exit') {
-                    $this->view->showGoodbye();
-                    break;
+        switch ($option) {
+            case '--new':
+            case '-n':
+                $app->runNewGame();
+                break;
+            case '--list':
+            case '-l':
+                $app->showGamesList();
+                break;
+            case '--replay':
+            case '-r':
+                $gameId = $argv[2] ?? null;
+                if ($gameId && is_numeric($gameId)) {
+                    $app->replayGame((int)$gameId);
+                } else {
+                    $view->showError("Please specify valid game ID");
                 }
-
-                $hints = $this->model->makeGuess($guess);
-                $attempts = $this->model->getAttempts();
-                $lastAttempt = end($attempts);
-
-                $this->view->showAttempt(
-                    $lastAttempt['number'],
-                    $lastAttempt['guess'],
-                    $lastAttempt['hints']
-                );
-
-            } catch (\InvalidArgumentException $e) {
-                $this->view->showError($e->getMessage());
-            }
-        }
-
-        if ($this->model->isGameWon()) {
-            $this->view->showWinMessage(
-                $this->model->getSecretNumber(),
-                $this->model->getCurrentAttemptNumber()
-            );
+                break;
+            case '--help':
+            case '-h':
+                $app->showHelp();
+                break;
+            default:
+                $app->runNewGame();
+                break;
         }
     }
 }

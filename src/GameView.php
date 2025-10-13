@@ -4,74 +4,114 @@ namespace ColdHot;
 
 class GameView
 {
-    public function showWelcomeMessage(): void
+    public function showWelcome(): void
     {
-        echo "🎮 Игра 'Холодно-Горячо' 🎮\n";
-        echo "========================\n";
-        echo "Попробуйте угадать трехзначное число с уникальными цифрами.\n";
-        echo "Подсказки:\n";
-        echo "  • Холодно - нет правильных цифр\n";
-        echo "  • Тепло   - есть цифра, но не на своем месте\n";
-        echo "  • Горячо  - цифра на своем месте\n\n";
+        echo "=== Игра 'Холодно-Горячо' ===\n";
+        echo "Угадайте трехзначное число с неповторяющимися цифрами!\n\n";
     }
 
-    public function showAttempt(int $attemptNumber, string $guess, array $hints): void
+    public function getPlayerName(): string
     {
-        $hintsString = implode(' ', $hints);
-        printf("Попытка %d: %s → %s\n", $attemptNumber, $guess, $hintsString);
-    }
-
-    public function showWinMessage(string $secretNumber, int $attempts): void
-    {
-        echo "\n🎉 Поздравляем! Вы угадали число {$secretNumber}!\n";
-        echo "Количество попыток: {$attempts}\n\n";
-    }
-
-    public function showDatabaseMessage(): void
-    {
-        echo "⚠️  Внимание: игра пока не сохраняется в базе данных\n\n";
-    }
-
-    public function showListMessage(): void
-    {
-        echo "📋 Режим просмотра списка игр\n";
-        echo "⚠️  База данных пока не подключена\n\n";
-    }
-
-    public function showReplayMessage(int $gameId): void
-    {
-        echo "🔄 Режим повтора игры #{$gameId}\n";
-        echo "⚠️  База данных пока не подключена\n\n";
-    }
-
-    public function showHelp(): void
-    {
-        echo "Использование: cold-hot [ПАРАМЕТРЫ]\n\n";
-        echo "Параметры:\n";
-        echo "  -n, --new           Новая игра (по умолчанию)\n";
-        echo "  -l, --list          Список всех сохраненных игр\n";
-        echo "  -r ID, --replay=ID  Повтор игры с идентификатором ID\n";
-        echo "  -h, --help          Показать эту справку\n\n";
-        echo "Примеры:\n";
-        echo "  cold-hot              # Новая игра\n";
-        echo "  cold-hot --new        # Новая игра\n";
-        echo "  cold-hot --list       # Список игр\n";
-        echo "  cold-hot --replay=5   # Повтор игры #5\n";
-    }
-
-    public function promptForGuess(): string
-    {
-        echo "Введите ваше предположение (3 цифры): ";
+        echo "Введите ваше имя: ";
         return trim(fgets(STDIN));
+    }
+
+    public function showGameStarted(): void
+    {
+        echo "Игра началась! Загадано трехзначное число.\n";
+        echo "Введите 'quit' для выхода из игры.\n\n";
+    }
+
+    public function getPlayerGuess(int $attempt, int $maxAttempts): string
+    {
+        echo "Попытка {$attempt}/{$maxAttempts}. Введите вашу догадку: ";
+        return trim(fgets(STDIN));
+    }
+
+    public function showHints(array $hints): void
+    {
+        echo "Подсказки: " . implode(' ', $hints) . "\n\n";
+    }
+
+    public function showInvalidInput(): void
+    {
+        echo "Ошибка! Введите трехзначное число с неповторяющимися цифрами.\n\n";
+    }
+
+    public function showWinMessage(int $attempts): void
+    {
+        echo "Поздравляем! Вы угадали число за {$attempts} попыток!\n";
+    }
+
+    public function showLoseMessage(string $secretNumber): void
+    {
+        echo "К сожалению, вы не угадали число. Загаданное число: {$secretNumber}\n";
+    }
+
+    public function showGameQuit(): void
+    {
+        echo "Игра прервана.\n";
+    }
+
+    public function showGamesList(array $games): void
+    {
+        if (empty($games)) {
+            echo "Нет сохраненных игр.\n";
+            return;
+        }
+
+        echo "=== Список всех игр ===\n";
+        foreach ($games as $game) {
+            $status = $game['is_won'] ? 'Победа' : 'Поражение';
+            echo "ID: {$game['id']} | Игрок: {$game['player_name']} | ";
+            echo "Число: {$game['secret_number']} | Результат: {$status} | ";
+            echo "Дата: {$game['created_at']}\n";
+        }
+    }
+
+    public function showReplay(array $gameData, array $attempts): void
+    {
+        echo "=== Повтор игры #{$gameData['id']} ===\n";
+        echo "Игрок: {$gameData['player_name']}\n";
+        echo "Загаданное число: {$gameData['secret_number']}\n";
+        echo "Результат: " . ($gameData['is_won'] ? 'Победа' : 'Поражение') . "\n";
+        echo "Дата: {$gameData['created_at']}\n\n";
+
+        if (empty($attempts)) {
+            echo "Нет попыток для этой игры.\n";
+            return;
+        }
+
+        echo "Ход игры:\n";
+        foreach ($attempts as $attempt) {
+            echo "Попытка {$attempt['attempt_number']}: ";
+            echo "Число: {$attempt['guess']} | ";
+            echo "Подсказки: " . implode(' ', $attempt['hints']) . "\n";
+        }
+    }
+
+    public function showGameNotFound(): void
+    {
+        echo "Ошибка: игра с указанным ID не найдена.\n";
     }
 
     public function showError(string $message): void
     {
-        echo "❌ Ошибка: {$message}\n";
+        echo "Ошибка: {$message}\n";
     }
 
-    public function showGoodbye(): void
+    public function showHelp(): void
     {
-        echo "Спасибо за игру! До свидания!\n";
+        echo "=== Cold-Hot Game Help ===\n";
+        echo "Usage:\n";
+        echo "  php bin/cold-hot [OPTIONS]\n\n";
+        echo "Options:\n";
+        echo "  -n, --new           Start new game (default)\n";
+        echo "  -l, --list          Show list of all games\n";
+        echo "  -r, --replay ID     Replay game with specified ID\n";
+        echo "  -h, --help          Show this help message\n\n";
+        echo "Game Rules:\n";
+        echo "  - Guess a 3-digit number with unique digits\n";
+        echo "  - Hints: 'Холодно' (no correct digits), 'Тепло' (correct digit wrong position), 'Горячо' (correct digit and position)\n";
     }
 }
